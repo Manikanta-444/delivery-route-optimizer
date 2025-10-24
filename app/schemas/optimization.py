@@ -10,11 +10,14 @@ class OptimizationConstraints(BaseModel):
     max_route_duration_minutes: int = Field(480, ge=60, le=720)  # 1-12 hours
     max_vehicles: int = Field(1, ge=1, le=10)
     vehicle_capacity_kg: Decimal = Field(Decimal("500.0"), ge=Decimal("1.0"))
-    optimization_criteria: str = Field("MINIMIZE_DISTANCE", regex="^(MINIMIZE_DISTANCE|MINIMIZE_TIME|MINIMIZE_COST)$")
+    optimization_criteria: str = Field(
+        "MINIMIZE_DISTANCE",
+        pattern="^(MINIMIZE_DISTANCE|MINIMIZE_TIME|MINIMIZE_COST)$"
+    )
     depot_latitude: Optional[float] = None
     depot_longitude: Optional[float] = None
-    working_hours_start: str = Field("08:00", regex="^([01]?[0-9]|2[0-3]):[0-5][0-9]$")
-    working_hours_end: str = Field("18:00", regex="^([01]?[0-9]|2[0-3]):[0-5][0-9]$")
+    working_hours_start: str = Field("08:00", pattern="^([01]?[0-9]|2[0-3]):[0-5][0-9]$")
+    working_hours_end: str = Field("18:00", pattern="^([01]?[0-9]|2[0-3]):[0-5][0-9]$")
 
 
 class OptimizationRequest(BaseModel):

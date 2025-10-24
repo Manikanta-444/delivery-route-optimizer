@@ -150,14 +150,15 @@ class VRPSolver:
             route_distance = 0
             route_time = 0
             route_load = 0
+            previous_index = None
 
             while not routing.IsEnd(index):
                 node_index = manager.IndexToNode(index)
                 location = locations[node_index]
 
                 # Calculate distance from previous stop
-                if route:
-                    prev_index = manager.IndexToNode(routing.Value(solution, previous_index))
+                if route and previous_index is not None:
+                    prev_index = manager.IndexToNode(previous_index)
                     travel_time = matrix[prev_index][node_index] // 60  # Convert back to minutes
                     distance = travel_time * 0.8  # Rough distance estimate
                 else:
