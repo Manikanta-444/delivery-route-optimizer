@@ -324,6 +324,7 @@ async def process_optimization(job_id: str, order_ids: List[str], constraints: d
     except Exception as e:
         # Handle errors
         logger.error(f"Optimization job {job_id} failed: {e}")
+        logger.error(f"{str(e)}: Traceback: {traceback.format_exc()}")
         job = db.query(OptimizationJob).filter(OptimizationJob.job_id == uuid.UUID(job_id)).first()
         if job:
             job.job_status = "FAILED"
@@ -418,8 +419,8 @@ def get_optimized_routes(db: Session = Depends(get_db)):
                 "driver_id": getattr(route, "driver_id", None),
                 "route_name": getattr(route, "route_name", None),
                 "total_distance_km": route.total_distance_km,
-                "total_duration_minutes": getattr(route, "total_estimated_time_minutes", None),
-                "total_stops": len(stops),
+                "total_duration_minutes": getattr(route, "estimated_duration_minutes", None),
+                "total_stops": len(stops) - 1,
                 "total_weight_kg": getattr(route, "total_load_kg", None),
                 "route_status": getattr(route, "route_status", None),
                 "start_time": getattr(route, "start_time", None),

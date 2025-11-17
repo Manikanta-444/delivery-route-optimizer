@@ -130,7 +130,8 @@ class VRPSolver:
 
         return matrix
 
-    def _euclidean_distance(self, lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    @staticmethod
+    def _euclidean_distance(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
         """Calculate euclidean distance between two points (simplified)"""
         # This is a simplified distance - in real scenarios use Haversine
         lat_diff = lat1 - lat2
@@ -141,14 +142,15 @@ class VRPSolver:
                           matrix: List[List[int]]) -> Dict:
         """Extract the solution from OR-Tools solver"""
         routes = []
-        total_distance = 0
-        total_time = 0
+        total_distance_km = 0.0
+        total_time_minutes = 0
 
         for vehicle_id in range(manager.GetNumberOfVehicles()):
             route = []
             index = routing.Start(vehicle_id)
-            route_distance = 0
-            route_time = 0
+            route_cost_seconds = 0
+            route_time_minutes = 0
+            route_distance_km = 0.0
             route_load = 0
             previous_index = None
 
@@ -159,11 +161,21 @@ class VRPSolver:
                 # Calculate distance from previous stop
                 if route and previous_index is not None:
                     prev_index = manager.IndexToNode(previous_index)
-                    travel_time = matrix[prev_index][node_index] // 60  # Convert back to minutes
-                    distance = travel_time * 0.8  # Rough distance estimate
+
+                    # Travel time (minutes) from the matrix (seconds -> minutes)
+                    travel_time = matrix[prev_index][node_index] // 60
+                    print(matrix)
+
+                    prev_location = locations[prev_index]
+                    distance = self.traffic_client._calculate_distance(
+                        prev_location.latitude,
+                        prev_location.longitude,
+                        location.latitude,
+                        location.longitude
+                    )
                 else:
                     travel_time = 0
-                    distance = 0
+                    distance = 0.0
 
                 stop_data = {
                     "stop_sequence": len(route),
@@ -179,33 +191,62 @@ class VRPSolver:
 
                 route.append(stop_data)
                 route_load += float(location.load_kg)
-
+                
+                # Add service time (seconds) for delivery stops (exclude depot)
+                if manager.IndexToNode(index) != 0:
+                    route_cost_seconds += int(location.service_time_minutes * 60)
+                
                 previous_index = index
                 index = solution.Value(routing.NextVar(index))
                 if not routing.IsEnd(index):
-                    route_distance += routing.GetArcCostForVehicle(previous_index, index, vehicle_id)
+                    route_cost_seconds += routing.GetArcCostForVehicle(previous_index, index, vehicle_id)
+                    route_distance_km += distance
 
             # Only add route if it has stops beyond depot
             if len(route) > 1:
-                route_time = route_distance // 60  # Convert to minutes
+                # Add return leg from last stop back to depot
+                last_node_index = manager.IndexToNode(previous_index) if previous_index is not None else None
+                if last_node_index is not None and last_node_index != 0:
+                    return_time_seconds = matrix[last_node_index][0]
+                    route_cost_seconds += return_time_seconds
+                    # total_time_minutes += return_time_seconds // 60
+
+                    last_location = locations[last_node_index]
+                    depot_location = locations[0]
+                    return_distance = self.traffic_client._calculate_distance(
+                        last_location.latitude,
+                        last_location.longitude,
+                        depot_location.latitude,
+                        depot_location.longitude
+                    )
+                    route_distance_km += return_distance
+
+
+                route_time_minutes = route_cost_seconds // 60
+                total_time_minutes += route_time_minutes
+                total_distance_km += route_distance_km
+
                 routes.append({
                     "vehicle_id": vehicle_id,
                     "route_sequence": vehicle_id,
-                    "total_distance_minutes": route_time,
-                    "total_distance_km": route_time * 0.8,  # Rough estimate
+                    "total_time_minutes": route_time_minutes,
+                    "total_distance_km": round(route_distance_km, 2),
                     "total_load_kg": route_load,
                     "stops": route
                 })
-                total_distance += route_time * 0.8
-                total_time += route_time
+            else:
+                # Include depot-only routes in totals to avoid stale data
+                total_distance_km += route_distance_km
+                total_time_minutes += route_time_minutes
+        print(f"routes: {routes}")
 
         return {
             "success": True,
             "routes": routes,
             "summary": {
-                "total_distance_km": total_distance,
-                "total_time_minutes": total_time,
+                "total_distance_km": round(total_distance_km, 2),
+                "total_time_minutes": total_time_minutes,
                 "vehicles_used": len(routes),
-                "total_stops": sum(len(r["stops"]) for r in routes)
+                "total_stops": sum(len(r["stops"]) for r in routes) - 1
             }
         }
